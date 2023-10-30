@@ -36,7 +36,6 @@ urlcolor: blue
 ```{r setup, include=FALSE}
 # This is the setup chunk
 #  Here you can set global options for the entire document
-
 library(knitr) # I recommend doing this
 
 # Although you can call functions from a library using the following notation
@@ -50,10 +49,6 @@ knitr::opts_chunk$set(echo = TRUE,
                       message = FALSE, # Turn off load messages
                       warning = FALSE # Turn off warnings,
                       )
-
-
-
-
 ```
 
 \clearpage
@@ -61,7 +56,7 @@ knitr::opts_chunk$set(echo = TRUE,
 ```{r include=FALSE}
 
 # You should set your working directory at the very beginning of your R Markdown file
-setwd("~/Dropbox/teaching/SU19/CMDA_3654/lectures/Lecture_11_Writing_Research_Reports/")
+setwd("C:/Users/marco/Desktop/CMDA 4654/Projects/Project 1")
 
 # You should load all of the libraries that you plan to use here unless you plan
 #  on using the notation library_name::function_name()
@@ -70,9 +65,6 @@ library(tidyverse)
 library(pander)  # We used pander here, but some alternative libraries are below:
 library(xtable)
 library(kableExtra)
-
-
-
 ```
 
 
@@ -123,98 +115,3 @@ Your document should include the following sections:
 
 6. Citations
     * Biblography section.
-
-
-\clearpage
-
-# Examples
-
-I'm not going to write a full report for you, but I just want to demonstrate how to use R Markdown to make a nice looking report by having the raw output converted into nicer looking tables and plots that are clearly labeled.
-
-The following tables make use of the `pander` library.
-
-## Example 1: A Linear Regression
-
-An initial investigation has led us to suspect that the miles per gallon (MPG) or a car may be linearly related to the weight of a car.  Using the `mtcars` dataset, an initial scatterplot of MPG versus Weight provided enough compelling evidence for us to fit a linear regression model.  The results of our model fit with MPG regressed upon Weight is shown in Table 1.
-
-```{r echo=FALSE}
-modfit <- lm(mpg ~ wt, data = mtcars)
-modfit %>%
-  pander(caption = "Regression Summary for MPG regressed on Car Weight")
- 
-
- 
-```
-
-We therefore have statistical evidence (p-value = `1.29e-10`) to conclude that the MPG for cars is linearly related to the weight of a car.  Based upon this output we summarize our model as $\widehat{\mbox{MPG}} = 37.29 - 5.344 * \mbox{WT}$.  Furthermore, we have plotted the linear regression fit for the `mtcars` data as seen in Figure 1.
-
-```{r echo=FALSE, out.width="0.5\\textwidth", fig.cap="Plot of Car MPG versus Weight", fig.pos="h"}
-ggplot(mtcars, aes(x = wt, y = mpg)) + geom_point() + theme_bw() +
-  labs(x = "Weight in (1000s of lbs)", y = "MPG", title = "Car MPG versus Weight") +
-  geom_smooth(method = "lm", se = F) + 
-  theme(text = element_text(size = 15), plot.title = element_text(hjust = 0.5))
-```
-
-### Discussion
-
-The results of our linear regression analysis have provided us with a model that can predict the MPG of a car based upon it's weight.  Using our regression model, $\widehat{\mbox{MPG}} = 37.29 - 5.344 * \mbox{WT}$ we predict that the MPG for a car that weighs 2750 lbs is `r 37.29 - 5.344*2.75` miles per gallon.
-
-\clearpage
-
-## Example 2: Displaying Bivariate Tables
-
-The `HairEyeColor` data in R is a 3-way frequency table.  We can limit our scope to the bivariate portion that describes the counts of Hair and Eye color for Males only which are shown in Table 2.
-
-
-```{r echo=FALSE, results='asis'}
-HairEyeColor[, , Sex = "Male"] %>% 
-  pandoc.table(caption = "Hair and Eye Color for Males")
-
-```
-
-
-## Example 3: Rotating Plots
-
-There are a number of ways to rotate the plots.  We could use the options in `include_graphics()` for example.  Thankfully we can use the the chunk options themselves to acheive the result that you see in Figure 2.  The method that we present is easy to use even though the figure caption didn't rotate with it, but we can live with that. It can be customized much further if you wish to investigate the options yourself.
-
-As you can see the plot itself is rather big and takes up the whole page.  It will generally do it's best to stick it on a page immediately after this one.  It is usually a better practice to simply put this plot in the appendix and reference it.
-
-```{r, echo=F, out.extra="angle=270", fig.cap="The counts of insects in agricultural experimental units treated with different insecticides."}
-ggplot(InsectSprays, aes(x = spray, y = count, fill = spray)) + geom_boxplot() + theme_bw() +
-  labs(x = "Spray Type", y = "Insect Count", title = "Counts of Insects by Spray Type")
-```
-
-
-**Note:** As you can see this section started before the plot from the previous section managed to land on a page.  If you want to force this section to start after the big plot has been made, you can use `\clearpage` which I did below.
-
-
-\clearpage
-
-# Appendix
-
-You should organize your appendix into sections and everything should be well-labeled.
-
-Massive plots and tables should generally go in the appendix.
-
-You can also include computer code in the appendix.  Formatting computer code can be tricky sometimes, but should be easy enough given that you are using R Markdown.
-
-## Code for Example 1
-
-```{r eval=FALSE}
-# Code for Example 1 - Regression Table
-modfit <- lm(mpg ~ wt, data = mtcars)
-modfit %>%
-  pander(caption = "Regression Summary for MPG regressed on Car Weight")
-
-# Code for Example 1 - Scatterplot with Linear Regression Fit
-ggplot(mtcars, aes(x = wt, y = mpg)) + geom_point() + theme_bw() +
-  labs(x = "Weight in (1000s of lbs)", y = "MPG", title = "Car MPG versus Weight") +
-  geom_smooth(method = "lm", se = F) + 
-  theme(text = element_text(size = 15), plot.title = element_text(hjust = 0.5))
-
-
-
-```
-
-etc...
-
