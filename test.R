@@ -13,7 +13,7 @@ df_w <- df %>%
     dplyr::select(all_of(wake_cols)) %>%
     mutate_if(is.character, list(~na_if(.,""))) %>%
     drop_na()
-
+    
 ## multiple linear regression
 # what maximizes the total sale value of a piece of property?
 mlr_cols <- c(2:4, 8, 10:11, 13, 15, 17)
@@ -36,4 +36,10 @@ best_subsets_results$bic
 ## logistic regression
 # is there a way i can track whether or not the sale was profitable or not
 # time? difference between land and total sale?
+log_cols <- c(5, 6, 7)
+df_log <- df_w %>%
+    dplyr::select(Building.Value, Land.Value, Total.Sale.Value) %>%
+    mutate(Profited = ifelse(Building.Value + Land.Value < Total.Sale.Value, 1, 0))
+log_model <- glm(Profited ~ Building.Value + Land.Value, data=df_log, family="binomial")
+summary(log_model)
 
