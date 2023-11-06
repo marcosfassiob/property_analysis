@@ -146,20 +146,16 @@ confusionMatrix(data = knn_classes, reference = test_classes)
 # LOESS
 
 ```{r}
-loess50 <- loess(y ~ x, data=data, span=.5)
-smooth50 <- predict(loess50) 
+filtered_df <- df[df$Calculated.Acreage < 1.5 & df$Total.Sale.Value < 900000,]
+set.seed(123)  # Set a seed for reproducibility
+sampled_df <- filtered_df %>% sample_n(5000)  # Adjust the number of sampled points as needed
 
-loess75 <- loess(y ~ x, data=data, span=.75)
-smooth75 <- predict(loess75) 
+```
 
-loess90 <- loess(y ~ x, data=data, span=.9)
-smooth90 <- predict(loess90) 
-
-#create scatterplot with each regression line overlaid
-plot(data$x, data$y, pch=19, main='Loess Regression Models')
-lines(smooth50, x=data$x, col='red')
-lines(smooth75, x=df$x, col='purple')
-lines(smooth90, x=df$x, col='blue')
-legend('bottomright', legend=c('.5', '.75', '.9'),
-        col=c('red', 'purple', 'blue'), pch=19, title='Smoothing Span')
+```{r}
+ggplot(sampled_df, aes(x = Land.Value, y = Total.Sale.Value)) + geom_point() +
+  geom_smooth(method = "loess", span = 0.25, se = F, method.args = list(degree = 1), aes(color = "degree 1")) + 
+  geom_smooth(method = "loess", span = 0.25, se = F, method.args = list(degree = 2), aes(color = "degree 2")) + 
+  scale_color_manual(name = "Degree", breaks = c("degree 1", "degree 2"), values = c("red", "blue")) +
+  theme(legend.position = "bottom")
 ```
