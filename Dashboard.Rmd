@@ -1,0 +1,67 @@
+---
+title: "Property Sale Value Analysis"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(knitr) # I recommend doing this here
+library(olsrr)
+library(leaps)
+library(ggplot2)
+library(faraway)
+library(GGally)
+library(tidyverse)
+library(glmnet)
+library(ISLR2)
+library(splines)
+library(caret)
+library(FNN)
+```
+
+```{r}
+##CHANGE THIS WORKING DIRECTORY--------------------
+setwd("C:/Users/azras/OneDrive/Documents/School/VT/Fall 2023/Intermediate Data and ML - CMDA 4654/Project 1")
+```
+
+```{r}
+data <- data.frame(read.csv("cleaned_data.csv"))
+```
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### Loess Fit
+
+```{r}
+desired_columns <- c('Billing.Class','Total.Sale.Value','Calculated.Acreage',
+                     'Total.Structures', 'Total.Units',
+                     'Building.Value','Land.Value','Land.Sale.Value')
+df <- data[, desired_columns]
+filtered_df <- df[df$Calculated.Acreage < 1.5 & df$Total.Sale.Value < 900000,]
+set.seed(123)  # Set a seed for reproducibility
+sampled_df <- filtered_df %>% sample_n(5000)  # Adjust the number of sampled points as needed
+ggplot(sampled_df, aes(x = Land.Value, y = Total.Sale.Value)) + geom_point() +
+  geom_smooth(method = "loess", span = 0.25, se = F, method.args = list(degree = 1), aes(color = "degree 1")) + 
+  geom_smooth(method = "loess", span = 0.25, se = F, method.args = list(degree = 2), aes(color = "degree 2")) + 
+  scale_color_manual(name = "Degree", breaks = c("degree 1", "degree 2"), values = c("red", "blue")) +
+  theme(legend.position = "bottom")
+```
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### Chart B
+
+```{r}
+
+```
+
+### Chart C
+
+```{r}
+
+```
+
