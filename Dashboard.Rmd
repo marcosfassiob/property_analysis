@@ -30,25 +30,55 @@ setwd("C:/Users/azras/OneDrive/Documents/School/VT/Fall 2023/Intermediate Data a
 ```{r}
 data <- data.frame(read.csv("cleaned_data.csv"))
 ```
-Column {data-width=650}
+Column {.tabset}
 -----------------------------------------------------------------------
 
-### Loess Fit
+### How Land Value affects Total Sale Value
 
-```{r}
-desired_columns <- c('Billing.Class','Total.Sale.Value','Calculated.Acreage',
-                     'Total.Structures', 'Total.Units',
-                     'Building.Value','Land.Value','Land.Sale.Value')
-df <- data[, desired_columns]
-filtered_df <- df[df$Calculated.Acreage < 1.5 & df$Total.Sale.Value < 900000,]
-set.seed(123)  # Set a seed for reproducibility
-sampled_df <- filtered_df %>% sample_n(5000)  # Adjust the number of sampled points as needed
-ggplot(sampled_df, aes(x = Land.Value, y = Total.Sale.Value)) + geom_point() +
-  geom_smooth(method = "loess", span = 0.25, se = F, method.args = list(degree = 1), aes(color = "degree 1")) + 
-  geom_smooth(method = "loess", span = 0.25, se = F, method.args = list(degree = 2), aes(color = "degree 2")) + 
-  scale_color_manual(name = "Degree", breaks = c("degree 1", "degree 2"), values = c("red", "blue")) +
-  theme(legend.position = "bottom")
+```{r,  fig.width=10, fig.height=7}
+#Creating dataframe for plot
+ns_filtered <- data %>%
+  filter(Land.Value < 250000, Total.Sale.Value < 900000) %>%
+  select(Land.Value, Total.Sale.Value)
+
+ns_df <- ns_filtered %>% sample_n(3000)
+
+#Creating NS with different dfs
+ns.1 <- lm(Total.Sale.Value ~ ns(Land.Value, df= 1), data = ns_df)
+ns.2 <- lm(Total.Sale.Value ~ ns(Land.Value, df= 2), data = ns_df)
+ns.3 <- lm(Total.Sale.Value ~ ns(Land.Value, df= 3), data = ns_df)
+ns.4 <- lm(Total.Sale.Value ~ ns(Land.Value, df= 4), data = ns_df)
+ns.5 <- lm(Total.Sale.Value ~ ns(Land.Value, df= 5), data = ns_df)
+
+#Determining which df is best
+SSE.1 <- sum(residuals(ns.1)^2)
+SSE.2 <- sum(residuals(ns.2)^2)
+SSE.3 <- sum(residuals(ns.3)^2)
+SSE.4 <- sum(residuals(ns.4)^2)
+SSE.5 <- sum(residuals(ns.5)^2)
+SSE.1 <- c(SSE.1, SSE.2, SSE.3, SSE.4, SSE.5)
+#From plotting separately, degree 3 seems best
+
+#Plot
+
+ggplot(data = ns_df, aes(x = Land.Value, y = Total.Sale.Value)) +
+  geom_point(size = 0.9, color = "royalblue") +
+  geom_smooth(method = "lm", formula = y ~ ns(x, df = 3), se = TRUE, 
+              color = "brown4", size=2) +
+  geom_vline(xintercept = attributes(ns(ns_df$Land.Value, df = 3))$knots, 
+             linetype = "dashed", color = "black", size = 1) +
+  ggtitle("Natural Cubic Spline on Land Value vs Total Sale Value") +
+  labs(x = "Land Value ($)", y = "Total Sale Value ($)") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 18, hjust = 0.5),
+        axis.title = element_text(size = 14),
+        axis.text = element_text(size = 12),
+        legend.position = "none")
+
+
 ```
+
+As expected, the value of the land is directly correlated to to the Total Sale Value. The relationship does not appear to be exactly linear, but has a logarithmic curve.
 
 Column {data-width=350}
 -----------------------------------------------------------------------
