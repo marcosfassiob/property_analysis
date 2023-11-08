@@ -27,9 +27,27 @@ library(FNN)
 setwd("C:/Users/azras/OneDrive/Documents/School/VT/Fall 2023/Intermediate Data and ML - CMDA 4654/Project 1")
 ```
 
+
 ```{r}
-data <- data.frame(read.csv("cleaned_data.csv"))
+df <- read.csv("data/property.csv", header=TRUE)
+wake_cols <- c(10, 18:21, 24:29, 34, 43:46, 48, 50, 52, 53, 59, 61) # columns i want in cleaned data
+useless_APA_cols <- c("Site In Natural State", "Developing Site") # rows i DONT want in cleaned data
+useless_land_class_cols <- c("Part Exempt", "State Assessed", "Vacant Land", "Manufactured Home", 
+                       "Manufactured Home Park")
+useless_ownership_cols <- c("County, Parish, Province, Etc.", "Federal Government")
+
+df_w <- df %>%
+    dplyr::select(all_of(wake_cols)) %>%
+    mutate_if(is.character, list(~na_if(.,""))) %>%
+    filter(Land.Value != 0 & Building.Value != 0 & Land.Sale.Value > 0 & Total.Sale.Value > 0) %>%
+    filter(!APA.Site.Description %in% useless_APA_cols) %>% 
+    filter(!Land.Class %in% useless_land_class_cols) %>% 
+    filter(!APA.Ownership.Description %in% useless_ownership_cols) %>%
+    # only one instance found - essentially an exception
+    drop_na()
 ```
+
+
 Column {.tabset}
 -----------------------------------------------------------------------
 
@@ -37,7 +55,8 @@ Column {.tabset}
 
 ```{r,  fig.width=10, fig.height=7}
 #Creating dataframe for plot
-ns_filtered <- data %>%
+
+ns_filtered <- df_w %>%
   filter(Land.Value < 250000, Total.Sale.Value < 900000) %>%
   select(Land.Value, Total.Sale.Value)
 
