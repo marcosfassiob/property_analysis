@@ -30,7 +30,7 @@ df_w <- df %>%
 # ------- MULTIPLE LINEAR REGRESSION ---------------------------------
 
 # what maximizes the total sale value of a piece of property?
-mlr_cols <- c(1, 4, 6:8, 10, 18)
+mlr_cols <- c(1, 4:8, 10, 18)
 df_mlr <- df_w %>%
     select(all_of(mlr_cols))
 
@@ -113,7 +113,8 @@ proportions <- round(prop.table(tab), 3)
 misclass <- (sum(tab) - sum(diag(tab))) / sum(tab)
 misclass # it's kinda high..
 
-confusion_matrix <- confusionMatrix(factor(yhat), factor(nb_test$Estimated.Rent.Class), dnn=c("Predicted", "Actual"))
+confusion_matrix <- confusionMatrix(factor(yhat), factor(nb_test$Estimated.Rent.Class), 
+                                    dnn=c("Predicted", "Actual"))
 temp <- as.data.frame(confusion_matrix$table)
 temp$Predicted <- factor(temp$Predicted, levels=rev(levels(temp$Predicted)))
 
@@ -123,5 +124,23 @@ ggplot(temp, aes(Predicted, Actual, fill=Freq)) + theme_bw() +
  
 # ------- LOGISTIC REGRESSION ----------------------------------------
 
-log_cols <- c()
-df_log <- df_w
+log_cols <- c(1, 3:7, 18, 19, 21)
+df_log <- df_w %>%
+    select(all_of(log_cols)) %>%
+    filter(Land.Class.Code %in% c("G") & Type.And.Use.Description %in% c("ELEV APT", "GRDN APT")) %>%
+    mutate(Type.And.Use.Description = ifelse(Type.And.Use.Description == "ELEV APT", 1, 0)) %>%
+    select(-Land.Class.Code)
+    # no houses or apts
+
+# step selection w/ null and full model for glm
+# and then use best model selection
+# and then collinearity?
+null_model <- glm(Type.And.Use.Description ~ 1, data=df_log, family="binomial")
+full_model <- glm(Type.And.Use.Description ~ ., data=df_log, family="binomial")
+step(full_model, scope=list(lower=null_model, full=full_model), direction="both", k=log(nrow(df_log))) # BIC
+
+log_model <- glm(Type.And.Use.Description ~ Total.Structures + Building.Value, data=df_log, family="binomial")
+summary(log_model)
+plot(log_model)
+
+# TODO CHECK DIAGNOSTICS AND SORT THIS OUT IN OFFICE HOURS TOMORROW
