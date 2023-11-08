@@ -7,6 +7,8 @@ library(caret)
 library(viridis)
 library(GGally)
 library(car)
+library(arm)
+library(boot)
 setwd("C:/Users/marco/Desktop/CMDA 4654/Projects/Project 1")
 
 # read/clean data
@@ -41,6 +43,7 @@ summary(full_model)
 best_step_model <- ols_step_both_aic(full_model)
 best_subsets <- regsubsets(Total.Sale.Value ~ ., data=df_mlr)
 best_subsets_results <- summary(best_subsets)
+best_subsets_results$outmat
 best_subsets_results$adjr2 
 best_subsets_results$cp 
 best_subsets_results$bic
@@ -139,8 +142,73 @@ null_model <- glm(Type.And.Use.Description ~ 1, data=df_log, family="binomial")
 full_model <- glm(Type.And.Use.Description ~ ., data=df_log, family="binomial")
 step(full_model, scope=list(lower=null_model, full=full_model), direction="both", k=log(nrow(df_log))) # BIC
 
-log_model <- glm(Type.And.Use.Description ~ Total.Structures + Building.Value, data=df_log, family="binomial")
+best_subsets <- regsubsets(Type.And.Use.Description ~ ., data=df_log)
+sum <- summary(best_subsets)
+sum$bic
+sum$outmat
+
+log_model <- glm(Type.And.Use.Description ~ Building.Value, data=df_log, family="binomial")
+anova(log_model, test="LRT")
 summary(log_model)
-plot(log_model)
+binnedplot(fitted(log_model), 
+           residuals(log_model, type = "response"), 
+           nclass = NULL, 
+           xlab = "Expected Values", 
+           ylab = "Average residual", 
+           main = "Binned residual plot", 
+           cex.pts = 0.8, 
+           col.pts = 1, 
+           col.int = "gray")
+plot(log_model, which=2)
+plot(log_model, which=1)
+vif(log_model)
 
 # TODO CHECK DIAGNOSTICS AND SORT THIS OUT IN OFFICE HOURS TOMORROW
+
+# ------- LOGISTIC REGRESSION PT 2 ------------------------------------
+
+# what makes a single-family house expensive?
+# expensive = total sale value > 100k
+
+log_cols <- c(1, 3:7, 18, 19, 21)
+df_log2 <- df_w %>%
+    filter(Land.Class.Code %in% c("R") & Type.And.Use.Description %in% "SINGLFAM") %>%
+    mutate(Is.Expensive = ifelse(Total.Sale.Value > 100000, 1, 0)) %>%
+    dplyr::select(Calculated.Acreage, Total.Structures, Total.Units, Building.Value,
+           Land.Value, Total.Building.Square.Footage, Is.Expensive)
+
+best_subsets <- regsubsets(Is.Expensive ~ ., data=df_log2)
+sum <- summary(best_subsets)
+sum$outmat
+sum$bic
+sum$cp
+
+log2_model <- glm(Is.Expensive ~ ., data=df_log2, family="binomial")
+summary(log2_model)
+vif(log2_model) # total structs, total units and building value not significant
+
+log2_model_new <- glm(Is.Expensive ~ log(Calculated.Acreage) + log(Land.Value) + log(Total.Building.Square.Footage), 
+                      data=df_log2, family="binomial")
+summary(log2_model_new)
+vif(log2_model_new)
+plot(log2_model_new)
+
+pihat <- predict(log2_model_new, type="response")
+etahat <- predict(log2_model_new, type="link")
+
+ggpairs(df_log2[, c("Calculated.Acreage", "Land.Value", "Total.Building.Square.Footage")])
+
+binnedplot(fitted(log2_model), 
+           residuals(log2_model, type = "response"), 
+           nclass = NULL, 
+           xlab = "Expected Values", 
+           ylab = "Average residual", 
+           main = "Binned residual plot", 
+           cex.pts = 0.8, 
+           col.pts = 1, 
+           col.int = "gray")
+plot(log2_model)
+
+ggplot(df_log2, aes(x=etahat, y=Is.Expensive)) + geom_point() +
+    geom_line(aes(x=etahat, y=pihat))
+cv.glm(data = df_log2, glmfit = log2_model, K = 10)$delta[1]

@@ -1,9 +1,12 @@
 ---
 title: "Property Sale Value Analysis"
+author: "Marcos Fassio Bazzi, Ariq Rashid"
 output: 
   flexdashboard::flex_dashboard:
     orientation: columns
     vertical_layout: fill
+    source_code: embed
+    theme: yeti
 ---
 
 ```{r setup, include=FALSE}
@@ -24,9 +27,8 @@ library(FNN)
 
 ```{r}
 ##CHANGE THIS WORKING DIRECTORY--------------------
-setwd("C:/Users/azras/OneDrive/Documents/School/VT/Fall 2023/Intermediate Data and ML - CMDA 4654/Project 1")
+setwd("C:/Users/marco/Desktop/CMDA 4654/Projects/Project 1")
 ```
-
 
 ```{r}
 df <- read.csv("data/property.csv", header=TRUE)
@@ -47,9 +49,85 @@ df_w <- df %>%
     drop_na()
 ```
 
+Overview
+=======================================================================
 
-Column {.tabset}
+data summary {data-width=350}
 -----------------------------------------------------------------------
+
+### About our Data
+
+Our data contains real estate data from portions of North Carolina's Wake County, Chatham County and Durham County. The dataset contains about 270,000 observations and 63 variables containing real estate data - including but not limited to houses, apartments and commercial property. After cleaning our data, the dataset only contains data from Wake County and contains about 64,000 observations and 22 variables. 
+
+* Source: [data.gov](https://catalog.data.gov/dataset/real-estate-data) 
+* Landing page: [townofcary.org](https://data.townofcary.org/explore/dataset/property/information) 
+* Raw Data: [Google Drive](https://drive.google.com/file/d/15Gm2mkMeiIoca7K-YL8wG-0lwqsXrdJG/view?usp=sharing).
+
+Our responsibilities are divided as follows:
+
+* Ariq:
+    - Natural Cubic Splines
+    - k-Nearest Neighbors Classification
+    - Ridge Regression
+* Marcos:
+    - Multiple Linear Regression
+    - Naive Bayes Classification
+    - Logistic Regression
+
+Table Summary {data-width=650}
+-----------------------------------------------------------------------
+
+### Table Summary
+
+|            **Name**           |                              **Description**                              |
+|:-----------------------------:|:-------------------------------------------------------------------------:|
+|       Calculated.Acreage      |                   Calculated area from property in acres                  |
+|           Land.Class          |                      Land classification description                      |
+|        Land.Class.Code        |                          Land classification code                         |
+|        Total.Structures       |                 Total number of structures on the property                |
+|          Total.Units          |                   Total number of units on the property                   |
+|         Building.Value        | Revenue Dept. assessed value for structures contained within the property |
+|           Land.Value          |    Revenue Dept. assessed value for land contained within the property    |
+|        Land.Sale.Value        |                US dollar value for the land when last sold.               |
+|         Land.Sale.Date        |                       Date that land was last sold.                       |
+|        Total.Sale.Value       |        US dollar value for the land and building(s) when last sold.       |
+|        Total.Sale.Date        |             Date that land and/or building(s) when last sold.             |
+|             WC.ETJ            |                Corporate limits where property is located.                |
+|         Billing.Class         |            Billing classifications for Revenue Department use.            |
+|   APA.Ownership.Description   |         American Planning Association (APA) ownership description.        |
+|    APA.Activity.Description   |                         APA activity description.                         |
+|    APA.Function.Description   |                         APA function description.                         |
+|      APA.Site.Description     |                           APA site description.                           |
+| Total.Building.Square.Footage |                   Total square footage of the structure.                  |
+|    Type.And.Use.Description   |                     Building use and type description                     |
+|            Phy.City           |                      City where property is located.                      |
+|          Shape.STArea         |                          Property structure area.                         |
+|           Year.Built          |                          Year property was sold.                          |
+
+Multiple Linear Regression
+=======================================================================
+
+summary {.sidebar}
+-----------------------------------------------------------------------
+
+### Summary
+
+What maximizes the total sale value of a piece of property? After comparing all possible subsets and their criterion and accounting for collinearity, the model regressing the total sale value to the calculated acreage, total structures, total units and land sale value is our most accurate model.
+
+However, the model violated all assumptions. Applying a log transform satisfies every assumption but normal distribution. You should note that this model might not produce the most accurate or precise results and should consider nonparametric methods and models.
+
+asdf {data-width=500}
+-----------------------------------------------------------------------
+
+### test
+
+asdf {data-width=500}
+-----------------------------------------------------------------------
+
+### test
+
+Natural Cubic Splines
+=======================================================================
 
 ### How Land Value affects Total Sale Value
 
@@ -114,3 +192,14 @@ Column {data-width=350}
 
 ```
 
+Ridge Regression
+=======================================================================
+
+Naive Bayes'
+=======================================================================
+
+kNN Classification
+=======================================================================
+
+Logistic Regression
+=======================================================================
