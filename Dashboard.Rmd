@@ -14,7 +14,6 @@ library(flexdashboard)
 library(knitr) # I recommend doing this here
 library(olsrr)
 library(leaps)
-library(ggplot2)
 library(faraway)
 library(GGally)
 library(tidyverse)
@@ -23,6 +22,11 @@ library(ISLR2)
 library(splines)
 library(caret)
 library(FNN)
+library(e1071)
+library(gmodels)
+library(car)
+library(arm)
+library(boot)
 ```
 
 ```{r}
@@ -228,7 +232,7 @@ Natural Cubic Splines
 
 ns_filtered <- df_w %>%
   filter(Land.Value < 250000, Total.Sale.Value < 900000) %>%
-  select(Land.Value, Total.Sale.Value)
+  dplyr::select(Land.Value, Total.Sale.Value)
 
 ns_df <- ns_filtered %>% sample_n(3000)
 
@@ -287,6 +291,106 @@ Ridge Regression
 
 Naive Bayes'
 =======================================================================
+
+```{r}
+nb_cols <- c(1, 2, 4:8, 10, 15) 
+df_nb <- df_w %>%
+    dplyr::select(all_of(nb_cols)) %>%
+    filter(APA.Activity.Description %in% "Household Activities" & 
+               Land.Class %in% "Residential < 10 Acres" & Total.Structures == 1) %>%
+    mutate(Calculated.Acerage.Class = case_when(Calculated.Acreage > 0.4 ~ "Large", 
+                                                Calculated.Acreage <= 0.4 ~ "Small")) %>%
+    mutate(Land.Value.Class = case_when(Land.Value < 50000 ~ "<50k",
+                                  Land.Value >= 50000 & Land.Value < 100000 ~ "50k-100k",
+                                  Land.Value >= 100000 ~ ">100k")) %>%
+    mutate(Total.Sale.Class = case_when(Total.Sale.Value < 200000 ~ "<200k",
+                                        Total.Sale.Value >= 200000 & Total.Sale.Value < 400000 ~ "200k-400k",
+                                        Total.Sale.Value >= 400000 ~ ">400k")) %>%
+    mutate(Estimated.Rent = round(abs(Land.Value - Total.Sale.Value) / 36), .before=10) %>%
+    mutate(Estimated.Rent.Class = case_when(Estimated.Rent < 5000 ~ "<5k",
+                                         Estimated.Rent >= 5000 & Estimated.Rent < 10000 ~ "5k-10k",
+                                         Estimated.Rent >= 10000 ~ ">10k"))
+
+n <- createDataPartition(y=df_nb$Estimated.Rent.Class, p=0.7, list=FALSE)
+nb_train <- df_nb[n, ]
+nb_test <- df_nb[-n, ]
+
+model <- naiveBayes(Estimated.Rent.Class ~ Calculated.Acerage.Class + Land.Value.Class + Total.Sale.Class,
+                    data=nb_train, laplace=0.5)
+yhat <- predict(model, newdata=nb_test)
+confusion_matrix <- confusionMatrix(factor(yhat), factor(nb_test$Estimated.Rent.Class), 
+                                    dnn=c("Predicted", "Actual"))
+```
+
+Summary {.sidebar}
+-----------------------------------------------------------------------
+
+### Summary
+
+I built a Naive Bayes classifier to classify the amount of money a family will pay per month in rent based on acreage, land value and total sale value. Since Naive Bayes is a categorical classifier by nature, I created intervals for each numerical variable and classified my data using this model.
+
+My most accurate model classified the calculated acreage, land value, and total sale value of the property with an accuracy rate of 78%. 
+
+Column
+-----------------------------------------------------------------------
+
+### Accuracy rate (%)
+
+```{r}
+valueBox(round(confusion_matrix$overall["Accuracy"], 2) * 100, icon="ion-android-checkmark-circle")
+```
+
+### Observations tested
+
+```{r}
+valueBox(20261, icon="ion-wrench")
+```
+
+### Training/testing split (%)
+
+```{r}
+valueBox("70-30", icon="ion-android-clipboard")
+```
+
+### Confusion Matrix
+
+```{r}
+temp <- as.data.frame(confusion_matrix$table)
+colnames(temp)[3] <- "Frequency"
+temp$Predicted <- factor(temp$Predicted, levels=rev(levels(temp$Predicted)))
+
+ggplot(temp, aes(Predicted, Actual, fill=Frequency)) + theme_bw() +
+    geom_tile() + geom_text(aes(label=Frequency)) +
+    scale_fill_gradient(low="white", high="#43c3f4") +
+    labs(title="Predicted vs. Actual Estimated Rent per Month")
+```
+
+Column
+-----------------------------------------------------------------------
+
+### Research Question & Classification Process
+
+Let's pretend that you're a property developer building single-family houses and you bought a piece of land and want to estimate how much money your residents are going to pay per month in rent. Over the span of three years, about how much will they need to pay per month for your net income to break even?
+
+I wanted to view the relationship between the land value, acreage and total sale value of a plot of residential land. Since Naive Bayes is much better suited for categorical data than numeric data, I created intervals for these variables. I would calculate the estimated rent as follows:
+
+$$\hbox{Rent} = \frac{1}{36} \, \left(\hbox{Land Value - Total Sale Value}\right)$$
+
+Below is a table summarizing these intervals:
+
+|   **Interval**   |                     **Description**                    |
+|:----------------:|:------------------------------------------------------:|
+|    Calculated    |  "Small" if smaller than 0.4 acres, "Large" if greater |
+|    Land Value    |  Less than $50k, between $50k and $100k or over $100k  |
+| Total Sale Value | Less than $200k, between $200k and $400k or over $400k |
+|  Estimated Rent  |    Less than $5k, between $5k and $10k or over $10k    |
+
+With this in mind, the output of the confusion matrix is shown below:
+
+```{r}
+confusion_matrix
+```
+
 
 kNN Classification
 =======================================================================
