@@ -166,3 +166,105 @@ ggplot(data = ns_df, aes(x = Land.Value, y = Total.Sale.Value)) +
   labs(x = "Land Value ($)", y = "Total Sale Value ($)") +
   theme_minimal()
 ```
+
+
+Ridge Regression
+=================================================
+
+summary {.sidebar}
+---------------------------------------------------
+### Applying Ridge Regression
+
+The point of this method is to address multicolinearity in a model. With this dataset, a lot of the columns that can be helpful may be correlated with each other. When selecting the best Multilinear Regresssion Model, the log of the x values or column variables had to be taken. I want to use this method to see if using the regular values, not taking the log, will produce a possibly better model.
+
+Column {.tabset}
+-----------------------------------------------------
+
+### Creating first model
+
+The first step is to create a model using the glmnet library that does the default ridge regression, without setting a lambda. Below is a summary of the base model. In the plot tabs, you can see the plot of the coefficients for this model.
+
+```{r}
+mlr_cols <- c(1, 4:8, 10, 18)
+df_mlr <- df_w %>%
+    dplyr::select(all_of(mlr_cols))
+```
+
+```{r}
+y <- df_mlr$Total.Sale.Value
+selected_columns <- c('Calculated.Acreage', 'Total.Structures', 'Land.Sale.Value')
+
+# Select the columns from the data frame
+selected_data <- df_mlr[, selected_columns]
+
+# Convert the selected data to a matrix
+x <- as.matrix(selected_data)
+
+ridge_model1 <- glmnet(x, y, alpha = 0)
+kable(summary(ridge_model1))
+```
+### Finding the Best Lambda
+
+In order to find the best lambda, we must do cross validation. The glmnet library has a built in function for that. This process is visualized in the Cross-Validated Model tab. To see if using this improved the previous model, we calculate the R-squared value to see how much fo the variation is accounted for. The coeffiecients plot with best lambda is in the "Best Model" tab.
+
+```{r}
+cv_model1 <- cv.glmnet(x, y, alpha = 0)
+best_lambda1 <- cv_model1$lambda.min
+best_ridge_model <- glmnet(x, y, alpha = 0, lambda = best_lambda1)
+
+
+#use fitted best model to make predictions
+y_predicted <- predict(ridge_model1, s = best_lambda1, newx = x)
+
+#find SST and SSE
+sst <- sum((y - mean(y))^2)
+sse <- sum((y_predicted - y)^2)
+
+#find R-Squared
+rsq <- 1 - sse/sst
+
+values <- c(best_lambda1, rsq)
+
+
+```
+
+Below is the best lambda value.
+```{r}
+best_lambda1
+```
+
+Below are the coefficients.
+```{r}
+coef(best_ridge_model)
+```
+
+Below is the Summary of the best ridge regression Model.
+```{r}
+kable(summary(best_ridge_model))
+```
+
+The whole point of using this method was to see if we could get an improve model that addresses multicolinearity. After calculating the R-squared value, it seems that this model is a slight improvement of the same variables and predicted value from the previous model selection.
+```{r}
+rsq
+```
+
+Column {.tabset}
+-----------------------------------------------
+
+### First Model Coeffecients Plot
+
+````{r}
+plot(ridge_model1)
+```
+
+### Plotting Cross-Validated Model
+
+```{r}
+plot(cv_model1)
+```
+
+### Plotting Best Model
+
+```{r}
+plot(ridge_model1, xvar = "lambda")
+```
