@@ -505,16 +505,103 @@ valueBox("70-30", icon="ion-android-clipboard")
 Logistic Regression
 =======================================================================
 
+```{r}
+df_log2 <- df_w %>%
+    filter(Land.Class.Code %in% c("R") & Type.And.Use.Description %in% "SINGLFAM") %>%
+    filter(Total.Sale.Value < 832500) %>%
+    mutate(Is.Expensive = ifelse(Total.Sale.Value > 489000, 1, 0)) %>%
+    dplyr::select(Calculated.Acreage, Total.Structures, Total.Units, Building.Value,
+           Land.Value, Total.Building.Square.Footage, Is.Expensive)
+```
+
 Column {.sidebar}
 -----------------------------------------------------------------------
 
 ### Summary
 
-What makes a piece of property expensive? I used the median property value in Wake County, NC (source: [datausa.io](https://datausa.io/profile/geo/wake-county-nc#:~:text=Median%20household%20income%20in%20Wake,values%20of%20%24211%2C213%20and%20%24194%2C737) as my cutoff point between a property being expensive or not and fit a logistic regression model using all possible subsets. After accounting for multicollinearity, my final model uses the calculated acreage, land value, total structures and units as the predictors. After predicting the response and link values and fitting my logit function onto the graph, I concluded my model has a 14% misclassification rate after using the `cv.glm` function.
+What makes a piece of property expensive? I used the median property value in Wake County, NC as my cutoff point between a property being expensive or not and fit a logistic regression model using all possible subsets. Before picking the best model, I eliminated all the outliers in the dataset.
 
-Column {data-width=500}
+After accounting for multicollinearity, my final model uses the calculated acreage, land value, total structures and units as the predictors. After predicting the response and link values and fitting my logit function onto the graph, I concluded my model has a 11% misclassification rate after cross-validating my out-of-sample data using the `cv.glm` function.
+
+Column {data-width=500, .tabset}
 -----------------------------------------------------------------------
 
-### Model Selection
+### All Possible Subsets
 
-What makes a piece of property expensive? I wanted to classify
+What makes a piece of property expensive? I wanted to answer this question using logistic regression as my classification model. To answer this question, I created a new Boolean variable titled `Is.Expensive`, where it returns true if the total sale value of the property was over \$489,000, the top 25th percentile in our dataset. Before picking out the best model, I filtered out all property where the total sale value was over $832,500 since anything over that threshold is considered an outlier. Using this new variable, I used all possible subsets to find the best variables for my model. The table showing all possible subsets is shown below:
+
+```{r}
+best_subsets <- regsubsets(Is.Expensive ~ ., data=df_log2)
+best_subsets_results <- summary(best_subsets)
+
+attach(best_subsets_results)
+table <- data.frame(outmat, adjr2, cp, bic)
+colnames(table) <- c("Acreage", "Sructures", "Units", "Building", 
+                    "Sq. Footage", "Expensive?", "AdjR2", "Cp", "BIC")
+rownames(table) <- c(1, 2, 3, 4, 5, 6)
+knitr::kable(table)
+detach(best_subsets_results)
+```
+
+As shown above, while other criterion point to multiple models having the best fit, Mallows' $C_p$ points to the model with five regressors being the best fit. I proceeded with the model classifying expensiveness to calculated acreage, total structures, building value and square footage.
+
+The following shows the summary and VIF of the chosen model.
+
+```{r}
+full_log_model <- glm(Is.Expensive ~ Calculated.Acreage + Total.Structures + Building.Value + 
+                          Total.Building.Square.Footage, data=df_log2, family="binomial")
+summary(full_log_model)
+vif(full_log_model)
+```
+
+After looking at the scatterplot matrix and the VIF of this model, I feel like there seems to be strong evidence of the building value and square footage to have collinearity. With that in mind, I refit a smaller model without the building value of the property.
+
+```{r}
+reduced_log_model <- glm(Is.Expensive ~ Calculated.Acreage + Total.Structures + 
+                          Total.Building.Square.Footage, data=df_log2, family="binomial")
+summary(reduced_log_model)
+vif(reduced_log_model)
+```
+
+Now the VIF of the model is extremely small, but the calculated acreage is no longer significant. With this, we can show our final model on the next page.
+
+### Final Model
+
+The final model (and the model the logit graph is based on) is shown below.
+
+```{r}
+reduced_log_model <- glm(Is.Expensive ~ Total.Structures + Total.Building.Square.Footage, 
+                         data=df_log2, family="binomial")
+summary(reduced_log_model)
+vif(reduced_log_model)
+```
+
+Only the number of structures and the total building square footage are the predictors. With this we can model our logit function, and after running cross-validation, we only have about a 12% misclassification rate, shown below.
+
+```{r}
+cv.glm(data = df_log2, glmfit = reduced_log_model, K = 10)$delta[1]
+```
+
+
+Column {data-width=500, .tabset}
+-----------------------------------------------------------------------
+
+### Scatterplot Matrix
+
+```{r}
+temp <- df_log2
+colnames(temp) <- c("CA", "TS", "TU", "BV", "LV", "TBSF", "IE")
+ggpairs(temp[1:10000, ]) +
+    theme(axis.line=element_blank(), axis.text=element_blank(), axis.ticks=element_blank())
+```
+
+### Logit Grpah
+
+```{r}
+pihat <- predict(reduced_log_model, type="response")
+etahat <- predict(reduced_log_model, type="link")
+ggplot(df_log2, aes(x=etahat, y=Is.Expensive)) + theme_bw() +
+    geom_point(aes(color=Is.Expensive), size=0.5, position=position_jitter(height=0.005, width=0)) +
+    geom_line(aes(x=etahat, y=pihat)) +
+    labs(x="Link Prediction", y="P(Expensive)", title="Probability a Piecce of Property is Expensive")
+```
