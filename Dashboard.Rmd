@@ -11,7 +11,7 @@ output:
 
 ```{r setup, include=FALSE}
 library(flexdashboard)
-library(knitr) # I recommend doing this here
+library(knitr)
 library(olsrr)
 library(leaps)
 library(faraway)
@@ -31,7 +31,7 @@ library(boot)
 
 ```{r}
 ##CHANGE THIS WORKING DIRECTORY--------------------
-setwd("C:/Users/azras/OneDrive/Documents/School/VT/Fall 2023/Intermediate Data and ML - CMDA 4654/Project 1")
+setwd("C:/Users/marco/Desktop/CMDA 4654/Projects/Project 1")
 ```
 
 ```{r}
@@ -362,10 +362,10 @@ My most accurate model classified the calculated acreage, land value, and total 
 Column
 -----------------------------------------------------------------------
 
-### Accuracy rate (%)
+### Accuracy rate
 
 ```{r}
-valueBox(round(confusion_matrix$overall["Accuracy"], 2) * 100, icon="ion-android-checkmark-circle")
+valueBox("77%", icon="ion-android-checkmark-circle")
 ```
 
 ### Observations tested
@@ -374,10 +374,10 @@ valueBox(round(confusion_matrix$overall["Accuracy"], 2) * 100, icon="ion-android
 valueBox(20261, icon="ion-wrench")
 ```
 
-### Training/testing split (%)
+### Training/testing split
 
 ```{r}
-valueBox("70-30", icon="ion-android-clipboard")
+valueBox("70-30%", icon="ion-android-clipboard")
 ```
 
 ### Confusion Matrix
@@ -504,3 +504,17 @@ valueBox("70-30", icon="ion-android-clipboard")
 
 Logistic Regression
 =======================================================================
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+
+### Summary
+
+What makes a piece of property expensive? I used the median property value in Wake County, NC (source: [datausa.io](https://datausa.io/profile/geo/wake-county-nc#:~:text=Median%20household%20income%20in%20Wake,values%20of%20%24211%2C213%20and%20%24194%2C737) as my cutoff point between a property being expensive or not and fit a logistic regression model using all possible subsets. After accounting for multicollinearity, my final model uses the calculated acreage, land value, total structures and units as the predictors. After predicting the response and link values and fitting my logit function onto the graph, I concluded my model has a 14% misclassification rate after using the `cv.glm` function.
+
+Column {data-width=500}
+-----------------------------------------------------------------------
+
+### Model Selection
+
+What makes a piece of property expensive? I wanted to classify
