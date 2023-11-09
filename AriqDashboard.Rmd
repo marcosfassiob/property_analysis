@@ -268,3 +268,111 @@ plot(cv_model1)
 ```{r}
 plot(ridge_model1, xvar = "lambda")
 ```
+
+kNN Classification
+===============================================================
+
+summary {.sidebar}
+-----------------------------------------------------------------------
+
+### Does Age make a difference on in the Sale Value?
+
+Now that we confirmed that Land Value does a large, positive impact on the Total Sale Value, I wanted to see if some other factors could contribute to the Total Sale as well. A column that stood out to me was "Year.Built". I assumed this would have some direct impact as well, since properties and estates gradually become more valuable over time. I wanted to see if based off the Sale and Land value, I could predict what time period the property was built.
+
+Column
+---------------------------------------------------------------------------
+
+### The Method
+
+Since years were on an interval of time, I needed to reduce and categorize them. I deccided to make a new column called "Time.Period" and had three categories: "Old" would be any year before 1995. "Modern" would any year from 1995 to 2019, and anything greater than 2019 would "New". To help visualize the data, I reduced and sampled 5000 data points. I proceeded to follow the kNN steps: doing a 70/30 split, running it on the training data. I chose a k = 5, constructed the confusion matrix to get an accuracy of 76%. 
+
+A problem doing this method is that the sales are not distributed evenly through the years. Before 1980, the property sales were either not as frequent or were not logged. In modern times, the property sales have are accounted for a lot more. So there is a heavy bias towards classifying something as Modern since a good portion of the sales are from that time period.
+
+```{r}
+years_binned <- df_w %>%
+  filter(Land.Value < 250000, Total.Sale.Value < 900000) %>%
+  dplyr::select(Land.Value, Total.Sale.Value, Year.Built)
+
+years_binned$Time.Period <- ifelse(years_binned$Year < 1995, "Old(Before 1995)",
+                            ifelse(years_binned$Year >= 1995 & years_binned$Year <= 2019,
+                                   "Modern(1995-2019)","New(2019-)"))
+
+desired_columns <- c('Time.Period','Total.Sale.Value','Land.Value')
+columns1_df <- years_binned[, desired_columns]
+set.seed((42))
+knn_df <- years_binned %>% sample_n(5000)
+
+index <- sample(1:nrow(knn_df), round(nrow(knn_df) * 0.7))
+training_df <- knn_df[index, ]
+testing_df <- knn_df[-index, ]
+
+# Store the training/testing data features
+train_features1 <- training_df[, 1:2]
+test_features1 <- testing_df[, 1:2]
+
+# Scale the features
+train_features <- scale(train_features1)
+test_features <- scale(test_features1)
+
+# Store the actual labels (assuming Total.Sale.Value is a factor)
+train_classes <- factor(training_df$Time.Period)
+test_classes <- factor(testing_df$Time.Period)
+
+knn_classes <- knn(train = train_features, test = test_features,
+cl = train_classes, k = 5)
+```
+
+```{r}
+confusion_matrix <- confusionMatrix(data = knn_classes, reference = test_classes)
+confusion_matrix
+```
+
+### Accuracy rate (%)
+
+```{r}
+valueBox(76, icon="ion-android-checkmark-circle")
+```
+
+### Observations tested
+
+```{r}
+valueBox(5000, icon="ion-wrench")
+```
+
+### Training/testing split (%)
+
+```{r}
+valueBox("70-30", icon="ion-android-clipboard")
+```
+
+Column
+--------------------------------------------------
+
+### kNN Visualized
+```{r}
+
+plot_data <- data.frame(Feature1 = test_features1$Land.Value, 
+                        Feature2 = test_features1$Total.Sale.Value,
+                        PredictedClass = knn_classes)
+
+# Create a scatter plot
+ggplot(plot_data, aes(x = Feature1, y = Feature2, color = as.factor(PredictedClass))) +
+  geom_point() +
+  labs(x = "Land Value ($)", y = "Total Sale Value ($)", 
+       color = "Predicted Time Periods", title = "kNN Classification of Time Period") +
+  theme_classic()  
+```
+
+### Confusion Matrix
+
+```{r}
+temp <- as.data.frame(confusion_matrix$table)
+colnames(temp)[3] <- "Frequency"
+temp$Predicted <- factor(temp$Prediction, levels=rev(levels(temp$Prediction)))
+
+ggplot(temp, aes(Predicted, Reference, fill=Frequency)) + theme_bw() +
+    geom_tile() + geom_text(aes(label=Frequency)) +
+    scale_fill_gradient(low="white", high="#43c3f4") +
+    labs(title="Predicted vs. Actual for Time Period")
+```
+
