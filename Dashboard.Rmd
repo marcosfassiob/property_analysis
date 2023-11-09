@@ -31,7 +31,7 @@ library(boot)
 
 ```{r}
 ##CHANGE THIS WORKING DIRECTORY--------------------
-setwd("C:/Users/marco/Desktop/CMDA 4654/Projects/Project 1")
+setwd("C:/Users/azras/OneDrive/Documents/School/VT/Fall 2023/Intermediate Data and ML - CMDA 4654/Project 1")
 ```
 
 ```{r}
@@ -271,25 +271,53 @@ ggplot(data = ns_df, aes(x = Land.Value, y = Total.Sale.Value)) +
 
 As expected, the value of the land is directly correlated to to the Total Sale Value. The relationship does not appear to be exactly linear, but has a logarithmic curve.
 
-Column {data-width=350}
------------------------------------------------------------------------
-
-### Chart B
-
-```{r}
-
-```
-
-### Chart C
-
-```{r}
-
-```
-
 Ridge Regression
 =======================================================================
 
-Naive Bayes'
+Summary {.sidebar}
+-----------------------------------------------------------------------
+
+### Summary 
+
+This is the Summary for Ridge Regression
+
+Column {data-width=500, .tabset}
+-----------------------------------------------------------------------
+
+### Building First Model
+```{r}
+y <- df_w$Total.Sale.Value
+x <- data.matrix(df_w[, c('Calculated.Acreage', 'Total.Structures', 'Total.Units', 'Building.Value','Land.Value','Land.Sale.Value')])
+ridge_model1 <- glmnet(x, y, alpha = 0)
+cv_model1 <- cv.glmnet(x, y, alpha = 0)
+best_lambda1 <- cv_model1$lambda.min
+plot(cv_model1)
+```
+
+### Coeffecients
+```{r}
+best_ridge_model <- glmnet(x, y, alpha = 0, lambda = best_lambda1)
+coef(best_ridge_model)
+plot(ridge_model1, xvar = "lambda")
+```
+
+### R-Squared
+
+```{r}
+#use fitted best model to make predictions
+y_predicted <- predict(ridge_model1, s = best_lambda1, newx = x)
+
+#find SST and SSE
+sst <- sum((y - mean(y))^2)
+sse <- sum((y_predicted - y)^2)
+
+#find R-Squared
+rsq <- 1 - sse/sst
+rsq
+```
+
+
+Naive Bayes
 =======================================================================
 
 ```{r}
@@ -394,6 +422,85 @@ confusion_matrix
 
 kNN Classification
 =======================================================================
+
+summary {.sidebar}
+-----------------------------------------------------------------------
+
+### Summary
+
+Now that we confirmed that Land Value does a large, positive impact on the Total Sale Value, I wanted to see if some other factors could contribute to the Total Sale as well. A column that stood out to me was "Year Built". I assumed this would have some direct impact as well, since properties and estates gradually become more valuable over time. I wanted to see if based off the Sale and Land value, I could predict what time period the property was built. Since there is a wide range of years, I created a new category and binned year ranges together. Before 1995 would be "Old", between 1995 and 2018 would be "Modern", and anything past 2019 would be "New".
+
+Column
+---------------------------------------------------------------------------
+### Predicted Time Periods on Reduced Data
+```{r}
+years_binned <- df_w %>%
+  filter(Land.Value < 250000, Total.Sale.Value < 900000) %>%
+  dplyr::select(Land.Value, Total.Sale.Value, Year.Built)
+
+years_binned$Time.Period <- ifelse(years_binned$Year < 1995, "Old(Before 1995)",
+                            ifelse(years_binned$Year >= 1995 & years_binned$Year <= 2019,
+                                   "Modern(1995-2019)","New(2019-)"))
+
+desired_columns <- c('Time.Period','Total.Sale.Value','Land.Value')
+columns1_df <- years_binned[, desired_columns]
+set.seed((42))
+knn_df <- years_binned %>% sample_n(5000)
+
+index <- sample(1:nrow(knn_df), round(nrow(knn_df) * 0.7))
+training_df <- knn_df[index, ]
+testing_df <- knn_df[-index, ]
+
+# Store the training/testing data features
+train_features1 <- training_df[, 1:2]
+test_features1 <- testing_df[, 1:2]
+
+# Scale the features
+train_features <- scale(train_features1)
+test_features <- scale(test_features1)
+
+# Store the actual labels (assuming Total.Sale.Value is a factor)
+train_classes <- factor(training_df$Time.Period)
+test_classes <- factor(testing_df$Time.Period)
+
+knn_classes <- knn(train = train_features, test = test_features,
+cl = train_classes, k = 5)
+
+confusion_matrix <- confusionMatrix(data = knn_classes, reference = test_classes)
+
+plot_data <- data.frame(Feature1 = test_features1$Land.Value, 
+                        Feature2 = test_features1$Total.Sale.Value,
+                        PredictedClass = knn_classes)
+
+# Create a scatter plot
+ggplot(plot_data, aes(x = Feature1, y = Feature2, color = as.factor(PredictedClass))) +
+  geom_point() +
+  labs(x = "Land Value ($)", y = "Total Sale Value ($)", 
+       color = "Predicted Time Periods", title = "kNN Classification of Time Period with 76% Accuracy") +
+  theme_classic()  
+```
+
+Column
+-----------------------------------------------------------------------
+
+### Accuracy rate (%)
+
+```{r}
+valueBox(76, icon="ion-android-checkmark-circle")
+```
+
+### Observations tested
+
+```{r}
+valueBox(5000, icon="ion-wrench")
+```
+
+### Training/testing split (%)
+
+```{r}
+valueBox("70-30", icon="ion-android-clipboard")
+```
+
 
 Logistic Regression
 =======================================================================
