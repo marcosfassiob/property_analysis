@@ -102,7 +102,9 @@ Table Summary {data-width=650}
 |    Type.And.Use.Description   |                     Building use and type description                     |
 |            Phy.City           |                      City where property is located.                      |
 |          Shape.STArea         |                          Property structure area.                         |
-|           Year.Built          |                          Year property was sold.                          |
+|           Year.Built          |                          Year property was built.                         |
+
+**Source: Town of Cary Dataset Schema**
 
 Multiple Linear Regression
 =======================================================================
@@ -116,15 +118,105 @@ What maximizes the total sale value of a piece of property? After comparing all 
 
 However, the model violated all assumptions. Applying a log transform satisfies every assumption but normal distribution. You should note that this model might not produce the most accurate or precise results and should consider nonparametric methods and models.
 
-asdf {data-width=500}
+Side-by-side comparisons are provided in the "Variance", "Normality" and "Leverage" tabs.
+
+Column {data-width=500, .tabset}
 -----------------------------------------------------------------------
 
-### test
+### Research & Model Selection
 
-asdf {data-width=500}
+```{r}
+mlr_cols <- c(1, 4:8, 10, 18)
+df_mlr <- df_w %>%
+    dplyr::select(all_of(mlr_cols))
+```
+
+My goal for this section is to model what maximizes the total sale value of a plot of land from this dataset. Initially I wanted to include both numeric and categorical data in my model but I would run into some problems -- more on that later. Using the cleaned dataset, and all possible subsets, I picked out seven regressors and compared them and their criterion to each other: `Calculated.Acreage`, `Total.Structures`, `Total.Units`, `Building.Value`, `Land.Value`, `Land.Sale.Value`, and `Total.Building.Square.Footage`. The following shows these results.
+
+```{r}
+best_subsets <- regsubsets(Total.Sale.Value ~ ., data=df_mlr)
+best_subsets_results <- summary(best_subsets)
+
+attach(best_subsets_results)
+table <- data.frame(outmat, adjr2, cp, bic)
+colnames(table) <- c("Acreage", "Sructures", "Units", "Building", 
+                    "Land", "Land Sale", "Sq. Footage", "AdjR2", "Cp", "BIC")
+rownames(table) <- c(1, 2, 3, 4, 5, 6, 7)
+knitr::kable(table)
+detach(best_subsets_results)
+```
+
+As shown above, each criterion points to the fact that the full model is the most accurate model. This *seems* like a great fit to the data -- however, it's not. The model's variance inflation factor (VIF) and the data's scatterplot matrix, as shown to the right, proves that there is collinearity between the regressors.
+
+```{r}
+full_model <- lm(Total.Sale.Value ~ ., data=df_mlr)
+vif(full_model)
+```
+
+This calls for a reduced model.
+
+### Reduced Model & Diagnostics
+
+Our new best model regresses `Total.Sale.Value` with `Calculated.Acreage`, `Total.Structures`, `Total.Units`, and `Land.Sale.Value`. The model summary and VIF is shown below.
+
+```{r}
+reduced_model <- lm(Total.Sale.Value ~ Calculated.Acreage + Total.Structures + Total.Units + Land.Sale.Value, 
+                 data=df_mlr)
+summary(reduced_model)
+vif(reduced_model)
+```
+
+The calculated acreage, the land sale value, and the total number of structures and units have a direct correlation against the total sale value of a property. This model explains about 60.66% of the variance, as seen by the adjusted-$R^2$ value.
+
+However, there's a problem: none of the assumptions for multiple linear regression are satisfied, and a log transform is necessary. The only problem that comes with this is that `Total.Units` cannot be used anymore since a large portion of the data contains zero.
+
+### Final Model
+
+The final model is as follows:
+
+```{r}
+final_model <- lm(log(Total.Sale.Value) ~ log(Calculated.Acreage) + log(Total.Structures) + 
+                      log(Land.Sale.Value), data=df_mlr)
+summary(final_model)
+```
+
+Looking at the graphs to the right (aside from collinearity), you can see a side-by-side comparison showing how the log transform has satisfied all assumptions but normality. With this in mind, this model might not produce the most accurate or precise results. Nonparametric methods should be considered when asking this question.
+
+Column {data-width=500 .tabset}
 -----------------------------------------------------------------------
 
-### test
+### Collinearity
+
+```{r}
+temp_df <- df_mlr
+colnames(temp_df) <- c("CA", "TS", "TU", "BV", "LV", "LSV", "TSV", "TBSF")
+ggpairs(temp_df[1:10000, ]) + # i will NOT let R run 70000 data points 49 times.
+    theme(axis.line=element_blank(), axis.text=element_blank(), axis.ticks=element_blank())
+```
+
+### Variance
+
+```{r}
+par(mfrow=c(2,1))
+plot(reduced_model, which=1, pch=20, main="Full Model")
+plot(final_model, which=1, pch=20, main="Log Model")
+```
+
+### Normality
+
+```{r}
+par(mfrow=c(2,1))
+plot(reduced_model, which=2, pch=20, main="Full Model")
+plot(final_model, which=2, pch=20, main="Log Model")
+```
+
+### Leverage
+
+```{r}
+par(mfrow=c(2,1))
+plot(reduced_model, which=5, pch=20, main="Full Model")
+plot(final_model, which=5, pch=20, main="Log Model")
+```
 
 Natural Cubic Splines
 =======================================================================
@@ -171,8 +263,6 @@ ggplot(data = ns_df, aes(x = Land.Value, y = Total.Sale.Value)) +
         axis.title = element_text(size = 14),
         axis.text = element_text(size = 12),
         legend.position = "none")
-
-
 ```
 
 As expected, the value of the land is directly correlated to to the Total Sale Value. The relationship does not appear to be exactly linear, but has a logarithmic curve.
