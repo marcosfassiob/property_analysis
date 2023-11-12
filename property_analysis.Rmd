@@ -1,0 +1,755 @@
+---
+title: "Property Sale Value Analysis"
+author: "Marcos Fassio Bazzi, Ariq Rashid"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    source_code: embed
+    theme: yeti
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(knitr)
+library(olsrr)
+library(leaps)
+library(faraway)
+library(GGally)
+library(tidyverse)
+library(glmnet)
+library(ISLR2)
+library(splines)
+library(caret)
+library(FNN)
+library(e1071)
+library(gmodels)
+library(car)
+library(arm)
+library(boot)
+```
+
+```{r}
+##CHANGE THIS WORKING DIRECTORY--------------------
+setwd("C:/Users/marco/Desktop/CMDA 4654/Projects/Project 1")
+```
+
+```{r}
+df <- read.csv("data/property.csv", header=TRUE)
+wake_cols <- c(10, 18:21, 24:29, 34, 43:46, 48, 50, 52, 53, 59, 61) # columns i want in cleaned data
+useless_APA_cols <- c("Site In Natural State", "Developing Site") # rows i DONT want in cleaned data
+useless_land_class_cols <- c("Part Exempt", "State Assessed", "Vacant Land", "Manufactured Home", 
+                       "Manufactured Home Park")
+useless_ownership_cols <- c("County, Parish, Province, Etc.", "Federal Government")
+
+df_w <- df %>%
+    dplyr::select(all_of(wake_cols)) %>%
+    mutate_if(is.character, list(~na_if(.,""))) %>%
+    filter(Land.Value != 0 & Building.Value != 0 & Land.Sale.Value > 0 & Total.Sale.Value > 0) %>%
+    filter(!APA.Site.Description %in% useless_APA_cols) %>% 
+    filter(!Land.Class %in% useless_land_class_cols) %>% 
+    filter(!APA.Ownership.Description %in% useless_ownership_cols) %>%
+    # only one instance found - essentially an exception
+    drop_na()
+```
+
+Overview
+=======================================================================
+
+data summary {data-width=350}
+-----------------------------------------------------------------------
+
+### About our Data
+
+Our data contains real estate data from portions of North Carolina's Wake County, Chatham County and Durham County. The dataset contains about 270,000 observations and 63 variables containing real estate data - including but not limited to houses, apartments and commercial property. After cleaning our data, the dataset only contains data from Wake County and contains about 64,000 observations and 22 variables. 
+
+* Source: [data.gov](https://catalog.data.gov/dataset/real-estate-data) 
+* Landing page: [townofcary.org](https://data.townofcary.org/explore/dataset/property/information) 
+* Raw Data: [Google Drive](https://drive.google.com/file/d/15Gm2mkMeiIoca7K-YL8wG-0lwqsXrdJG/view?usp=sharing).
+
+Our responsibilities are divided as follows:
+
+* Ariq:
+    - Natural Cubic Splines
+    - k-Nearest Neighbors Classification
+    - Ridge Regression
+* Marcos:
+    - Multiple Linear Regression
+    - Naive Bayes Classification
+    - Logistic Regression
+* Both:
+    - Compile dashboard and check each other's work
+
+Table Summary {data-width=650}
+-----------------------------------------------------------------------
+
+### Table Summary
+
+|            **Name**           |                              **Description**                              |
+|:-----------------------------:|:-------------------------------------------------------------------------:|
+|       Calculated.Acreage      |                   Calculated area from property in acres                  |
+|           Land.Class          |                      Land classification description                      |
+|        Land.Class.Code        |                          Land classification code                         |
+|        Total.Structures       |                 Total number of structures on the property                |
+|          Total.Units          |                   Total number of units on the property                   |
+|         Building.Value        | Revenue Dept. assessed value for structures contained within the property |
+|           Land.Value          |    Revenue Dept. assessed value for land contained within the property    |
+|        Land.Sale.Value        |                US dollar value for the land when last sold.               |
+|         Land.Sale.Date        |                       Date that land was last sold.                       |
+|        Total.Sale.Value       |        US dollar value for the land and building(s) when last sold.       |
+|        Total.Sale.Date        |             Date that land and/or building(s) when last sold.             |
+|             WC.ETJ            |                Corporate limits where property is located.                |
+|         Billing.Class         |            Billing classifications for Revenue Department use.            |
+|   APA.Ownership.Description   |         American Planning Association (APA) ownership description.        |
+|    APA.Activity.Description   |                         APA activity description.                         |
+|    APA.Function.Description   |                         APA function description.                         |
+|      APA.Site.Description     |                           APA site description.                           |
+| Total.Building.Square.Footage |                   Total square footage of the structure.                  |
+|    Type.And.Use.Description   |                     Building use and type description                     |
+|            Phy.City           |                      City where property is located.                      |
+|          Shape.STArea         |                          Property structure area.                         |
+|           Year.Built          |                          Year property was built.                         |
+
+**Source: Town of Cary Dataset Schema**
+
+Multiple Linear Regression
+=======================================================================
+
+summary {.sidebar}
+-----------------------------------------------------------------------
+
+### Summary
+
+What maximizes the total sale value of a piece of property? After comparing all possible subsets and their criterion and accounting for collinearity, the model regressing the total sale value to the calculated acreage, total structures, total units and land sale value is our most accurate model.
+
+However, the model violated all assumptions. Applying a log transform satisfies every assumption but normal distribution. You should note that this model might not produce the most accurate or precise results and should consider nonparametric methods and models.
+
+Side-by-side comparisons are provided in the "Variance", "Normality" and "Leverage" tabs.
+
+Column {data-width=500, .tabset}
+-----------------------------------------------------------------------
+
+### Research & Model Selection
+
+```{r}
+mlr_cols <- c(1, 4:8, 10, 18)
+df_mlr <- df_w %>%
+    dplyr::select(all_of(mlr_cols))
+```
+
+My goal for this section is to model what maximizes the total sale value of a plot of land from this dataset. Initially I wanted to include both numeric and categorical data in my model but I would run into some problems -- more on that later. Using the cleaned dataset, and all possible subsets, I picked out seven regressors and compared them and their criterion to each other: `Calculated.Acreage`, `Total.Structures`, `Total.Units`, `Building.Value`, `Land.Value`, `Land.Sale.Value`, and `Total.Building.Square.Footage`. The following shows these results.
+
+```{r}
+best_subsets <- regsubsets(Total.Sale.Value ~ ., data=df_mlr)
+best_subsets_results <- summary(best_subsets)
+
+attach(best_subsets_results)
+table <- data.frame(outmat, adjr2, cp, bic)
+colnames(table) <- c("Acreage", "Sructures", "Units", "Building", 
+                    "Land", "Land Sale", "Sq. Footage", "AdjR2", "Cp", "BIC")
+rownames(table) <- c(1, 2, 3, 4, 5, 6, 7)
+knitr::kable(table)
+detach(best_subsets_results)
+```
+
+As shown above, each criterion points to the fact that the full model is the most accurate model. This *seems* like a great fit to the data -- however, it's not. The model's variance inflation factor (VIF) and the data's scatterplot matrix, as shown to the right, proves that there is collinearity between the regressors.
+
+```{r}
+full_model <- lm(Total.Sale.Value ~ ., data=df_mlr)
+vif(full_model)
+```
+
+This calls for a reduced model.
+
+### Reduced Model & Diagnostics
+
+Our new best model regresses `Total.Sale.Value` with `Calculated.Acreage`, `Total.Structures`, `Total.Units`, and `Land.Sale.Value`. The model summary and VIF is shown below.
+
+```{r}
+reduced_model <- lm(Total.Sale.Value ~ Calculated.Acreage + Total.Structures + Total.Units + Land.Sale.Value, 
+                 data=df_mlr)
+summary(reduced_model)
+vif(reduced_model)
+```
+
+The calculated acreage, the land sale value, and the total number of structures and units have a direct correlation against the total sale value of a property. This model explains about 60.66% of the variance, as seen by the adjusted-$R^2$ value.
+
+However, there's a problem: none of the assumptions for multiple linear regression are satisfied, and a log transform is necessary. The only problem that comes with this is that `Total.Units` cannot be used anymore since a large portion of the data contains zero.
+
+### Final Model
+
+The final model is as follows:
+
+```{r}
+final_model <- lm(log(Total.Sale.Value) ~ log(Calculated.Acreage) + log(Total.Structures) + 
+                      log(Land.Sale.Value), data=df_mlr)
+summary(final_model)
+```
+
+Looking at the graphs to the right (aside from collinearity), you can see a side-by-side comparison showing how the log transform has satisfied all assumptions but normality. With this in mind, this model might not produce the most accurate or precise results. Nonparametric methods should be considered when asking this question.
+
+Column {data-width=500 .tabset}
+-----------------------------------------------------------------------
+
+### Collinearity
+
+```{r}
+temp_df <- df_mlr
+colnames(temp_df) <- c("CA", "TS", "TU", "BV", "LV", "LSV", "TSV", "TBSF")
+ggpairs(temp_df[1:10000, ]) + # i will NOT let R run 70000 data points 49 times.
+    theme(axis.line=element_blank(), axis.text=element_blank(), axis.ticks=element_blank())
+```
+
+### Variance
+
+```{r}
+par(mfrow=c(2,1))
+plot(reduced_model, which=1, pch=20, main="Full Model")
+plot(final_model, which=1, pch=20, main="Log Model")
+```
+
+### Normality
+
+```{r}
+par(mfrow=c(2,1))
+plot(reduced_model, which=2, pch=20, main="Full Model")
+plot(final_model, which=2, pch=20, main="Log Model")
+```
+
+### Leverage
+
+```{r}
+par(mfrow=c(2,1))
+plot(reduced_model, which=5, pch=20, main="Full Model")
+plot(final_model, which=5, pch=20, main="Log Model")
+```
+
+Ridge Regression
+=================================================
+
+summary {.sidebar}
+---------------------------------------------------
+
+### Applying Ridge Regression
+
+The point of this method is to address multicollinearity in a model. With this dataset, a lot of the columns that can be helpful may be correlated with each other. When building our MLR model we had to apply a log transform. I want to use ridge regression to see if we can use the model without any transformations.
+
+Column
+-----------------------------------------------------
+
+### Creating the Initial Model
+
+The first step is to create a ridge regression model using the `glmnet` library without any $\lambda$ yet. Below is a summary of said model. In the plot tabs, you can see the plot of the coefficients for this model.
+
+```{r}
+mlr_cols <- c(1, 4:8, 10, 18)
+df_mlr <- df_w %>%
+    dplyr::select(all_of(mlr_cols))
+```
+
+```{r}
+y <- df_mlr$Total.Sale.Value
+selected_columns <- c('Calculated.Acreage', 'Total.Structures', 'Land.Sale.Value')
+
+# Select the columns from the data frame
+selected_data <- df_mlr[, selected_columns]
+
+# Convert the selected data to a matrix
+x <- as.matrix(selected_data)
+
+ridge_model1 <- glmnet(x, y, alpha = 0)
+kable(summary(ridge_model1))
+```
+
+### Finding the Best $\lambda$
+
+To find our best $\lambda$ value we will be cross-validating our models. The `glmnet` library has a built-in function for that and the process can be seen visualized under "Plotting Cross-Validated Model". To see if using this improved the previous model, we calculate our adjusted $R^2$ to see how much variation the model takes into account. The coefficients plot with our best $\lambda$ is in the "Plotting Best Model" tab.
+
+```{r}
+cv_model1 <- cv.glmnet(x, y, alpha = 0)
+best_lambda1 <- cv_model1$lambda.min
+best_ridge_model <- glmnet(x, y, alpha = 0, lambda = best_lambda1)
+
+
+#use fitted best model to make predictions
+y_predicted <- predict(ridge_model1, s = best_lambda1, newx = x)
+
+#find SST and SSE
+sst <- sum((y - mean(y))^2)
+sse <- sum((y_predicted - y)^2)
+
+#find R-Squared
+rsq <- 1 - sse/sst
+
+values <- c(best_lambda1, rsq)
+```
+
+Below is $\lambda$ value that best fits our data.
+
+```{r}
+best_lambda1
+```
+
+Below are the coefficients for the model with said $\lambda$.
+
+```{r}
+coef(best_ridge_model)
+```
+
+Below is the summary of said model.
+
+```{r}
+kable(summary(best_ridge_model))
+```
+
+The whole point of using this method was to see if we could find an improved model that addresses multicollinearity. After calculating the adjusted $R^2$, it seems that this model is a slight improvement with the same variables and predicted value from the previous model selection.
+
+```{r}
+rsq
+```
+
+Column {.tabset}
+-----------------------------------------------
+
+### First Model Coeffecients Plot
+
+```{r}
+plot(ridge_model1)
+```
+
+### Plotting Cross-Validated Model
+
+```{r}
+plot(cv_model1)
+```
+
+### Plotting Best Model
+
+```{r}
+plot(ridge_model1, xvar = "lambda")
+```
+
+Logistic Regression
+=======================================================================
+
+```{r}
+df_log2 <- df_w %>%
+    filter(Land.Class.Code %in% c("R") & Type.And.Use.Description %in% "SINGLFAM") %>%
+    filter(Total.Sale.Value < 832500) %>%
+    mutate(Is.Expensive = ifelse(Total.Sale.Value > 489000, 1, 0)) %>%
+    dplyr::select(Calculated.Acreage, Total.Structures, Total.Units, Building.Value,
+           Land.Value, Total.Building.Square.Footage, Is.Expensive)
+```
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+
+### Summary
+
+What makes a piece of property expensive? I used the median property value in Wake County, NC as my cutoff point between a property being expensive or not and fit a logistic regression model using all possible subsets. Before picking the best model, I eliminated all the outliers in the dataset.
+
+After accounting for multicollinearity, my final model uses the calculated acreage, land value, total structures and units as the predictors. After predicting the response and link values and fitting my logit function onto the graph, I concluded my model has a 11% misclassification rate after cross-validating my out-of-sample data using the `cv.glm` function.
+
+Column {data-width=500, .tabset}
+-----------------------------------------------------------------------
+
+### All Possible Subsets
+
+What makes a piece of property expensive? I wanted to answer this question using logistic regression as my classification model. To answer this question, I created a new Boolean variable titled `Is.Expensive`, where it returns true if the total sale value of the property was over \$489,000, the top 25th percentile in our dataset. Before picking out the best model, I filtered out all property where the total sale value was over $832,500 since anything over that threshold is considered an outlier. Using this new variable, I used all possible subsets to find the best variables for my model. The table showing all possible subsets is shown below:
+
+```{r}
+best_subsets <- regsubsets(Is.Expensive ~ ., data=df_log2)
+best_subsets_results <- summary(best_subsets)
+
+attach(best_subsets_results)
+table <- data.frame(outmat, adjr2, cp, bic)
+colnames(table) <- c("Acreage", "Sructures", "Units", "Building", 
+                    "Sq. Footage", "Expensive?", "AdjR2", "Cp", "BIC")
+rownames(table) <- c(1, 2, 3, 4, 5, 6)
+knitr::kable(table)
+detach(best_subsets_results)
+```
+
+As shown above, while other criterion point to multiple models having the best fit, Mallows' $C_p$ points to the model with five regressors being the best fit. I proceeded with the model classifying expensiveness to calculated acreage, total structures, building value and square footage.
+
+The following shows the summary and VIF of the chosen model.
+
+```{r}
+full_log_model <- glm(Is.Expensive ~ Calculated.Acreage + Total.Structures + Building.Value + 
+                          Total.Building.Square.Footage, data=df_log2, family="binomial")
+summary(full_log_model)
+vif(full_log_model)
+```
+
+After looking at the scatterplot matrix and the VIF of this model, I feel like there seems to be strong evidence of the building value and square footage to have collinearity. With that in mind, I refit a smaller model without the building value of the property.
+
+```{r}
+reduced_log_model <- glm(Is.Expensive ~ Calculated.Acreage + Total.Structures + 
+                          Total.Building.Square.Footage, data=df_log2, family="binomial")
+summary(reduced_log_model)
+vif(reduced_log_model)
+```
+
+Now the VIF of the model is extremely small, but the calculated acreage is no longer significant. With this, we can show our final model on the next page.
+
+### Final Model
+
+The final model (and the model the logit graph is based on) is shown below.
+
+```{r}
+reduced_log_model <- glm(Is.Expensive ~ Total.Structures + Total.Building.Square.Footage, 
+                         data=df_log2, family="binomial")
+summary(reduced_log_model)
+vif(reduced_log_model)
+```
+
+Only the number of structures and the total building square footage are the predictors. With this we can model our logit function, and after running cross-validation, we only have about a 12% misclassification rate, shown below.
+
+```{r}
+cv.glm(data = df_log2, glmfit = reduced_log_model, K = 10)$delta[1]
+```
+
+
+Column {data-width=500, .tabset}
+-----------------------------------------------------------------------
+
+### Scatterplot Matrix
+
+```{r}
+temp <- df_log2
+colnames(temp) <- c("CA", "TS", "TU", "BV", "LV", "TBSF", "IE")
+ggpairs(temp[1:10000, ]) +
+    theme(axis.line=element_blank(), axis.text=element_blank(), axis.ticks=element_blank())
+```
+
+### Logit Grpah
+
+```{r}
+pihat <- predict(reduced_log_model, type="response")
+etahat <- predict(reduced_log_model, type="link")
+ggplot(df_log2, aes(x=etahat, y=Is.Expensive)) + theme_bw() +
+    geom_point(aes(color=Is.Expensive), size=0.5, position=position_jitter(height=0.005, width=0)) +
+    geom_line(aes(x=etahat, y=pihat)) +
+    labs(x="Link Prediction", y="P(Expensive)", title="Probability a Piecce of Property is Expensive")
+```
+
+Natural Cubic Splines
+=======================================================================
+
+summary {.sidebar}
+-----------------------------------------------------------------------
+
+### How Land Value affects Total Sale Value
+
+Does the land value affect the total sale value of a property? I used natural cubic splines to investigate the relationship between `Total.Sale.Value` to `Land.Value` and found that the fifth-degree spline is the best fit to the model.
+
+Column {.tabset}
+-----------------------------------------------------------------
+
+### Different Degrees
+
+First, I filtered the data so it only includes the lans and land sale value between \$250,000 and $900,000 that way outliers aren't included in our regression model. I also sampled the data to only 3000 observations for legibility purposes. Then, I fit models between one to five degrees of freedom in order to find our best model. Below is a summary of the five models.
+
+```{r}
+#Creating dataframe for plot
+
+ns_filtered <- df_w %>%
+  filter(Land.Value < 250000, Total.Sale.Value < 900000) %>%
+  dplyr::select(Land.Value, Total.Sale.Value)
+
+ns_df <- ns_filtered %>% sample_n(3000)
+
+#Creating NS with different dfs
+ns.1 <- lm(Total.Sale.Value ~ ns(Land.Value, df= 1), data = ns_df)
+ns.2 <- lm(Total.Sale.Value ~ ns(Land.Value, df= 2), data = ns_df)
+ns.3 <- lm(Total.Sale.Value ~ ns(Land.Value, df= 3), data = ns_df)
+ns.4 <- lm(Total.Sale.Value ~ ns(Land.Value, df= 4), data = ns_df)
+ns.5 <- lm(Total.Sale.Value ~ ns(Land.Value, df= 5), data = ns_df)
+
+summary(ns.1)
+summary(ns.2)
+summary(ns.3)
+summary(ns.4)
+summary(ns.5)
+```
+
+To determine the best degree of freedom, I calculated each spline's sum of square error by taking the sum of the residuals squared.
+
+```{r}
+#Determining which df is best
+SSE.1 <- sum(residuals(ns.1)^2)
+SSE.2 <- sum(residuals(ns.2)^2)
+SSE.3 <- sum(residuals(ns.3)^2)
+SSE.4 <- sum(residuals(ns.4)^2)
+SSE.5 <- sum(residuals(ns.5)^2)
+SSE.1 <- c(SSE.1, SSE.2, SSE.3, SSE.4, SSE.5)
+
+sse_data <- data.frame("df" = c(1,2,3,4,5), "SSE" = SSE.1)
+kable(sse_data, caption = "df and SSE for NS models")
+
+```
+
+### Best Model
+
+From the SSE table and the elbow plot, the best model appears to be of degree 5. Below is a summary of the model.
+
+```{r}
+summary(ns.5)
+```
+
+Column {.tabset}
+------------------------------------------
+
+### Plots for Models with Different Degrees
+
+```{r}
+ggplot(data = ns_df, aes(x = Land.Value, y = Total.Sale.Value)) +
+  geom_point(size = 0.7) +
+  geom_smooth(method = "lm", formula = y ~ ns(x, df = 1), se = FALSE, aes(color = "1st")) +
+  geom_smooth(method = "lm", formula = y ~ ns(x, df = 2), se = FALSE, aes(color = "2nd")) +
+  geom_smooth(method = "lm", formula = y ~ ns(x, df = 3), se = FALSE, aes(color = "3rd")) +
+  geom_smooth(method = "lm", formula = y ~ ns(x, df = 4), se = FALSE, aes(color = "4th")) +
+  geom_smooth(method = "lm", formula = y ~ ns(x, df = 5), se = FALSE, aes(color = "5th")) +
+  scale_color_manual(
+    name = "Polynomial Degree",
+    breaks = c("1st", "2nd", "3rd", "4th", "5th"),
+    labels = c("1st", "2nd", "3rd", "4th", "5th"),
+    values = c("yellow3", "hotpink3", "brown4", "springgreen4", "orange3")
+  ) +
+  theme(legend.position = "bottom") +
+  theme_bw() +
+  labs(title = "Natural Cubic Splines", x = "Land Value ($)",
+       y = "Totl Sale Value ($)")
+```
+
+### Elbow Plot
+
+```{r}
+ggplot(data = data.frame(df =c(1,2,3,4,5), SSE.1),       
+          aes(x=df, y = SSE.1)) + geom_point() + 
+          labs(x="Degrees of Freedom", y="SSE", title="Natural Spline Elbow Plot") + geom_line() + theme_bw()
+```
+
+### Best Model Plotted
+
+```{r}
+ggplot(data = ns_df, aes(x = Land.Value, y = Total.Sale.Value)) +
+  geom_point(size = 0.9) +
+  geom_smooth(method = "lm", formula = y ~ ns(x, df = 5), se = TRUE, 
+              color = "royalblue", size=2) +
+  geom_vline(xintercept = attributes(ns(ns_df$Land.Value, df = 3))$knots, 
+             linetype = "dashed", color = "orange", size = 1) +
+  ggtitle("Natural Cubic Spline on Land Value vs Total Sale Value") +
+  labs(x = "Land Value ($)", y = "Total Sale Value ($)") +
+  theme_bw()
+```
+
+Naive Bayes
+=======================================================================
+
+```{r}
+nb_cols <- c(1, 2, 4:8, 10, 15) 
+df_nb <- df_w %>%
+    dplyr::select(all_of(nb_cols)) %>%
+    filter(APA.Activity.Description %in% "Household Activities" & 
+               Land.Class %in% "Residential < 10 Acres" & Total.Structures == 1) %>%
+    mutate(Calculated.Acerage.Class = case_when(Calculated.Acreage > 0.4 ~ "Large", 
+                                                Calculated.Acreage <= 0.4 ~ "Small")) %>%
+    mutate(Land.Value.Class = case_when(Land.Value < 50000 ~ "<50k",
+                                  Land.Value >= 50000 & Land.Value < 100000 ~ "50k-100k",
+                                  Land.Value >= 100000 ~ ">100k")) %>%
+    mutate(Total.Sale.Class = case_when(Total.Sale.Value < 200000 ~ "<200k",
+                                        Total.Sale.Value >= 200000 & Total.Sale.Value < 400000 ~ "200k-400k",
+                                        Total.Sale.Value >= 400000 ~ ">400k")) %>%
+    mutate(Estimated.Rent = round(abs(Land.Value - Total.Sale.Value) / 36), .before=10) %>%
+    mutate(Estimated.Rent.Class = case_when(Estimated.Rent < 5000 ~ "<5k",
+                                         Estimated.Rent >= 5000 & Estimated.Rent < 10000 ~ "5k-10k",
+                                         Estimated.Rent >= 10000 ~ ">10k"))
+
+n <- createDataPartition(y=df_nb$Estimated.Rent.Class, p=0.7, list=FALSE)
+nb_train <- df_nb[n, ]
+nb_test <- df_nb[-n, ]
+
+model <- naiveBayes(Estimated.Rent.Class ~ Calculated.Acerage.Class + Land.Value.Class + Total.Sale.Class,
+                    data=nb_train, laplace=0.5)
+yhat <- predict(model, newdata=nb_test)
+confusion_matrix <- confusionMatrix(factor(yhat), factor(nb_test$Estimated.Rent.Class), 
+                                    dnn=c("Predicted", "Actual"))
+```
+
+Summary {.sidebar}
+-----------------------------------------------------------------------
+
+### Summary
+
+I built a Naive Bayes classifier to classify the amount of money a family will pay per month in rent based on acreage, land value and total sale value. Since Naive Bayes is a categorical classifier by nature, I created intervals for each numerical variable and classified my data using this model.
+
+My most accurate model classified the calculated acreage, land value, and total sale value of the property with an accuracy rate of 78%. 
+
+Column
+-----------------------------------------------------------------------
+
+### Accuracy rate
+
+```{r}
+valueBox("77%", icon="ion-android-checkmark-circle")
+```
+
+### Observations tested
+
+```{r}
+valueBox(20261, icon="ion-wrench")
+```
+
+### Training/testing split
+
+```{r}
+valueBox("70-30%", icon="ion-android-clipboard")
+```
+
+### Confusion Matrix
+
+```{r}
+temp <- as.data.frame(confusion_matrix$table)
+colnames(temp)[3] <- "Frequency"
+temp$Predicted <- factor(temp$Predicted, levels=rev(levels(temp$Predicted)))
+
+ggplot(temp, aes(Predicted, Actual, fill=Frequency)) + theme_bw() +
+    geom_tile() + geom_text(aes(label=Frequency)) +
+    scale_fill_gradient(low="white", high="#43c3f4") +
+    labs(title="Predicted vs. Actual Estimated Rent per Month ($)")
+```
+
+Column
+-----------------------------------------------------------------------
+
+### Research Question & Classification Process
+
+Let's pretend that you're a property developer building single-family houses and you bought a piece of land and want to estimate how much money your residents are going to pay per month in rent. Over the span of three years, about how much will they need to pay per month for your net income to break even?
+
+I wanted to view the relationship between the land value, acreage and total sale value of a plot of residential land. Since Naive Bayes is much better suited for categorical data than numeric data, I created intervals for these variables. I would calculate the estimated rent as follows:
+
+$$\hbox{Rent} = \frac{1}{36} \, \left(\hbox{Land Value - Total Sale Value}\right)$$
+
+Below is a table summarizing these intervals:
+
+|   **Interval**   |                     **Description**                    |
+|:----------------:|:------------------------------------------------------:|
+|    Calculated    |  "Small" if smaller than 0.4 acres, "Large" if greater |
+|    Land Value    |  Less than $50k, between $50k and $100k or over $100k  |
+| Total Sale Value | Less than $200k, between $200k and $400k or over $400k |
+|  Estimated Rent  |    Less than $5k, between $5k and $10k or over $10k    |
+
+With this in mind, the output of the confusion matrix is shown below:
+
+```{r}
+confusion_matrix
+```
+
+kNN Classification
+===============================================================
+
+summary {.sidebar}
+-----------------------------------------------------------------------
+
+### Summary
+
+Does the property's age make a difference in the total sale value of a property? I want to see if the year the property was built have a significant effect on the total sale value. I assumed this would have some direct impact as well, since properties and estates gradually become more valuable over time. I wanted to see if based off the Sale and Land value, I could predict what time period the property was built.
+
+Column
+---------------------------------------------------------------------------
+
+### The Method
+
+I created a new column, `Time.Period`, which is a categorical variable consisting of three different values: `Old` for property built before 1995, `Modern` for properties built between 1995 and 2019, and `New` for properties built after 2019. For visualization purposes, I reduced the dataset to a sample of 5,000 observations. Then, I proceeded to split the training and testing data in a 70/30% split, running the kNN classifier with our testing data ($k=5$), constructed the confusion matrix and got a classification rate of 76%. 
+
+A problem running this method is that properties are not evenly skewed throughout the years. We can't account for older properties built, so there is a heavy bias towards classifying something as Modern since a good portion of the sales happened after 2019.
+
+```{r}
+years_binned <- df_w %>%
+  filter(Land.Value < 250000, Total.Sale.Value < 900000) %>%
+  dplyr::select(Land.Value, Total.Sale.Value, Year.Built)
+
+years_binned$Time.Period <- ifelse(years_binned$Year < 1995, "Old(Before 1995)",
+                            ifelse(years_binned$Year >= 1995 & years_binned$Year <= 2019,
+                                   "Modern(1995-2019)","New(2019-)"))
+
+desired_columns <- c('Time.Period','Total.Sale.Value','Land.Value')
+columns1_df <- years_binned[, desired_columns]
+set.seed((42))
+knn_df <- years_binned %>% sample_n(5000)
+
+index <- sample(1:nrow(knn_df), round(nrow(knn_df) * 0.7))
+training_df <- knn_df[index, ]
+testing_df <- knn_df[-index, ]
+
+# Store the training/testing data features
+train_features1 <- training_df[, 1:2]
+test_features1 <- testing_df[, 1:2]
+
+# Scale the features
+train_features <- scale(train_features1)
+test_features <- scale(test_features1)
+
+# Store the actual labels (assuming Total.Sale.Value is a factor)
+train_classes <- factor(training_df$Time.Period)
+test_classes <- factor(testing_df$Time.Period)
+
+knn_classes <- knn(train = train_features, test = test_features,
+cl = train_classes, k = 5)
+```
+
+```{r}
+confusion_matrix <- confusionMatrix(data = knn_classes, reference = test_classes)
+confusion_matrix
+```
+
+### Accuracy rate (%)
+
+```{r}
+valueBox(76, icon="ion-android-checkmark-circle")
+```
+
+### Observations tested
+
+```{r}
+valueBox(5000, icon="ion-wrench")
+```
+
+### Training/testing split (%)
+
+```{r}
+valueBox("70-30", icon="ion-android-clipboard")
+```
+
+Column
+--------------------------------------------------
+
+### kNN Visualization Plot 
+
+```{r}
+
+plot_data <- data.frame(Feature1 = test_features1$Land.Value, 
+                        Feature2 = test_features1$Total.Sale.Value,
+                        PredictedClass = knn_classes)
+
+# Create a scatter plot
+ggplot(plot_data, aes(x = Feature1, y = Feature2, color = as.factor(PredictedClass))) +
+  geom_point() +
+  labs(x = "Land Value ($)", y = "Total Sale Value ($)", 
+       color = "Predicted Time Periods", title = "kNN Classification of Time Period") +
+  theme_classic()  
+```
+
+### Confusion Matrix
+
+```{r}
+temp <- as.data.frame(confusion_matrix$table)
+colnames(temp)[3] <- "Frequency"
+temp$Predicted <- factor(temp$Prediction, levels=rev(levels(temp$Prediction)))
+
+ggplot(temp, aes(Predicted, Reference, fill=Frequency)) + theme_bw() +
+    geom_tile() + geom_text(aes(label=Frequency)) +
+    scale_fill_gradient(low="white", high="#43c3f4") +
+    labs(title="Predicted vs. Reference for Time Period")
+```
